@@ -39,6 +39,15 @@ type AgentTrace = {
   tool_called?: string | null
 }
 
+type AgentState = {
+  active_order_id?: string | null
+  pending_action?: string | null
+  pending_intent?: string | null
+  return_reason?: string | null
+  new_address?: string | null
+  awaiting?: string | null
+}
+
 type ChatMessage = {
   id: string
   role: ChatRole
@@ -51,15 +60,17 @@ type AgentResponse = {
   intent?: string
   action?: string
   tool_called?: string | null
+  state?: AgentState
 }
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ??
   "http://127.0.0.1:8000"
+
 const GREETING: ChatMessage = {
   id: "greeting",
   role: "assistant",
-  text: "Hello, and welcome to Bookly. I'm Pip, here to help with order tracking and returns. How can I help you today?",
+  text: "Hello, and welcome to Bookly. I'm Pip, here to help with order tracking, returns, cancellations, refunds, and more. How can I help you today?",
 }
 
 function formatTraceValue(value?: string | null) {
@@ -72,6 +83,7 @@ export function BookChatWidget() {
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState("")
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [agentState, setAgentState] = useState<AgentState | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   async function addUserMessage(text: string) {
@@ -85,8 +97,6 @@ export function BookChatWidget() {
       text: trimmed,
     }
 
-    // Send only prior conversational messages as backend history.
-    // The backend uses this for multi-turn memory and workflow state.
     const history = messages.map((message) => ({
       role: message.role,
       content: message.text,
@@ -105,6 +115,7 @@ export function BookChatWidget() {
         body: JSON.stringify({
           message: trimmed,
           history,
+          state: agentState,
         }),
       })
 
@@ -125,6 +136,7 @@ export function BookChatWidget() {
         },
       }
 
+      setAgentState(data.state ?? null)
       setMessages((previousMessages) => [...previousMessages, assistantMessage])
     } catch (error) {
       console.error(error)
@@ -160,7 +172,7 @@ export function BookChatWidget() {
         aria-label={open ? "Close the Bookly assistant" : "Open the Bookly assistant"}
         className={cn(
           "fixed bottom-5 right-5 z-50 size-14 rounded-full bg-primary text-primary-foreground shadow-xl",
-          "transition-transform hover:scale-105 hover:bg-primary/90 [&_svg]:size-6",
+          "transition-transform hover:scale-105 hover:bg-primary/90 [&_svg]:size-6"
         )}
       >
         {open ? <X /> : <MessageCircle />}
@@ -172,7 +184,7 @@ export function BookChatWidget() {
           "h-[min(34rem,calc(100vh-8rem))] origin-bottom-right transition-all duration-200",
           open
             ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
-            : "pointer-events-none translate-y-3 scale-95 opacity-0",
+            : "pointer-events-none translate-y-3 scale-95 opacity-0"
         )}
         role="dialog"
         aria-label="Bookly support assistant"
@@ -187,9 +199,10 @@ export function BookChatWidget() {
             <p className="font-serif text-base font-semibold leading-tight">
               Pip from Bookly
             </p>
+
             <p className="flex items-center gap-1 text-xs text-primary-foreground/80">
               <Sparkles className="size-3" />
-              Orders &amp; support
+              Orders & support
             </p>
           </div>
         </header>
@@ -221,10 +234,12 @@ export function BookChatWidget() {
                               <span className="font-medium">Intent:</span>{" "}
                               {formatTraceValue(message.trace.intent)}
                             </p>
+
                             <p>
                               <span className="font-medium">Action:</span>{" "}
                               {formatTraceValue(message.trace.action)}
                             </p>
+
                             <p>
                               <span className="font-medium">Tool:</span>{" "}
                               {formatTraceValue(message.trace.tool_called)}
