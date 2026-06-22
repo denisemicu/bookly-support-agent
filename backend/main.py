@@ -6,13 +6,17 @@ from agent import run_bookly_agent
 
 app = FastAPI(title="Bookly Support Agent API")
 
+allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://bookly-support-agent-xi.vercel.app",
+    "https://bookly-support-agent-git-main-denise-s-org.vercel.app",
+    "https://bookly-support-agent-arkx2vqf6-denise-s-org.vercel.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
