@@ -1,6 +1,8 @@
+from typing import Optional
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from agent import run_bookly_agent
 
@@ -28,9 +30,19 @@ class ChatMessage(BaseModel):
     content: str
 
 
+class AgentState(BaseModel):
+    active_order_id: Optional[str] = None
+    pending_action: Optional[str] = None
+    pending_intent: Optional[str] = None
+    return_reason: Optional[str] = None
+    new_address: Optional[str] = None
+    awaiting: Optional[str] = None
+
+
 class ChatRequest(BaseModel):
     message: str
-    history: list[ChatMessage] = []
+    history: list[ChatMessage] = Field(default_factory=list)
+    state: Optional[AgentState] = None
 
 
 @app.get("/")
@@ -41,11 +53,29 @@ def health_check():
     }
 
 
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy",
+        "service": "bookly-support-agent",
+    }
+
+
+@app.get("/ready")
+def ready():
+    return {
+        "status": "ready",
+        "service": "bookly-support-agent",
+    }
+
+
 @app.post("/chat")
 def chat(request: ChatRequest):
     history = [message.model_dump() for message in request.history]
+    state = request.state.model_dump() if request.state else None
 
     return run_bookly_agent(
         user_message=request.message,
         history=history,
+        state=state,
     )
