@@ -1,33 +1,94 @@
-# bookly-bookstore-website
+# Bookly Support Agent
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [v0](https://v0.app).
+A customer support agent for Bookly, a fictional online bookstore.
 
-## Built with v0
+**Live demo:** https://bookly-support-agent-xi.vercel.app
 
-This repository is linked to a [v0](https://v0.app) project. You can continue developing by visiting the link below -- start new chats to make changes, and v0 will push commits directly to this repo. Every merge to `main` will automatically deploy.
+Pip helps customers with:
 
-[Continue working on v0 →](https://v0.app/chat/projects/prj_uyLik9htOgrFUf1HS4qF02KbUCxd)
+* Order tracking
+* Return eligibility and return requests
+* Refund status
+* Order cancellation
+* Shipping-address changes
+* Missing-package claims
+* Shipping, return, and password-reset questions
 
-## Getting Started
+## How it works
 
-First, run the development server:
+Pip follows a simple workflow:
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
+```text
+Understand → Clarify → Propose → Confirm → Act → Explain
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The agent gathers the required context, explains the tool action it can take, waits for customer confirmation, then executes the action and displays an Agent Trace with the detected intent, selected action, and tool used.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Example prompts
 
-## Learn More
+Try these in the live demo:
 
-To learn more, take a look at the following resources:
+```text
+Where is my order?
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [v0 Documentation](https://v0.app/docs) - learn about v0 and how to use it.
+```text
+I accidentally bought the hardcover version and want to return it
+```
+
+```text
+My package says delivered but I never got it
+```
+
+```text
+I need to change my shipping address
+```
+
+Use any valid Bookly order ID in the format:
+
+```text
+BK-1234
+```
+
+The agent also accepts variations such as:
+
+```text
+bk1234
+bk 1234
+```
+
+## Architecture
+
+```text
+Next.js chat interface
+        ↓
+FastAPI support agent
+        ↓
+Intent routing + explicit conversation state
+        ↓
+Mock Bookly tools + OpenAI intent classification
+```
+
+The agent uses deterministic workflow logic for operational decisions. OpenAI is used for ambiguous intent classification, not for inventing order details or deciding whether to execute customer-impacting actions.
+
+## Key behaviors
+
+* Multi-turn context collection
+* Explicit confirmation before tool execution
+* Structured conversation state for active orders and pending actions
+* Deterministic mock order data for any valid `BK-####` order ID
+* Invalid-ID recovery and multi-order disambiguation
+* Visible agent trace for transparency and debugging
+
+## Tech stack
+
+* Next.js + TypeScript
+* FastAPI + Python
+* OpenAI API
+* Vercel
+* Render
+
+## Notes
+
+Order data and operational tools are mocked for demonstration purposes. Customer-impacting actions require explicit confirmation before execution.
+
