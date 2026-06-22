@@ -17,7 +17,6 @@ from tools import (
     get_bookly_policy_answer,
     get_order_details,
     get_refund_status,
-    normalize_order_id,
     update_shipping_address,
 )
 
@@ -52,11 +51,14 @@ VALID_INTENTS = {
     "other",
 }
 
-ACTION_CONFIRMATIONS = {
-    "create_return_request",
+ORDER_REQUIRED_INTENTS = {
+    "order_status",
+    "return_request",
+    "return_eligibility",
+    "refund_status",
     "cancel_order",
-    "update_shipping_address",
-    "create_missing_package_claim",
+    "change_address",
+    "missing_package",
 }
 
 
@@ -100,61 +102,6 @@ def normalize_text(text: str) -> str:
     return " ".join(text.lower().strip().split())
 
 
-def get_last_message(
-    history: list[dict[str, str]],
-    role: str,
-) -> Optional[str]:
-    for message in reversed(history):
-        if message.get("role") == role:
-            return message.get("content", "")
-    return None
-
-
-def get_recent_user_messages(history: list[dict[str, str]]) -> list[str]:
-    return [
-        message.get("content", "")
-        for message in history[-12:]
-        if message.get("role") == "user"
-    ]
-
-
-def get_order_ids_from_history(history: list[dict[str, str]]) -> list[str]:
-    order_ids: list[str] = []
-
-    for message in history:
-        if message.get("role") != "user":
-            continue
-
-        for order_id in extract_order_ids(message.get("content", "")):
-            if order_id not in order_ids:
-                order_ids.append(order_id)
-
-    return order_ids
-
-
-def get_most_recent_order_id(history: list[dict[str, str]]) -> str | None:
-    for message in reversed(history):
-        if message.get("role") != "user":
-            continue
-
-        order_ids = extract_order_ids(message.get("content", ""))
-
-        if order_ids:
-            return order_ids[-1]
-
-    return None
-
-
-def looks_like_incomplete_order_id(text: str) -> bool:
-    compact = re.sub(r"[^a-zA-Z0-9]", "", text).upper()
-
-    return (
-        compact.startswith("BK")
-        and compact != "BK"
-        and not re.fullmatch(r"BK\d{4}", compact)
-    )
-
-
 def is_yes(text: str) -> bool:
     normalized = normalize_text(text)
 
@@ -194,7 +141,46 @@ def is_no(text: str) -> bool:
     return normalized in no_values or normalized.startswith("no ")
 
 
+def looks_like_incomplete_order_id(text: str) -> bool:
+    compact = re.sub(r"[^a-zA-Z0-9]", "", text).upper()
+
+    return (
+        compact.startswith("BK")
+        and compact != "BK"
+        and not re.fullmatch(r"BK\d{4}", compact)
+    )
+
+
+def get_most_recent_order_id(history: list[dict[str, str]]) -> str | None:
+    for message in reversed(history):
+        if message.get("role") != "user":
+            continue
+
+        order_ids = extract_order_ids(message.get("content", ""))
+
+        if order_ids:
+            return order_ids[-1]
+
+    return None
+
+
+def get_order_ids_from_history(history: list[dict[str, str]]) -> list[str]:
+    order_ids: list[str] = []
+
+    for message in history:
+        if message.get("role") != "user":
+            continue
+
+        for order_id in extract_order_ids(message.get("content", "")):
+            if order_id not in order_ids:
+                order_ids.append(order_id)
+
+    return order_ids
+
+
 def looks_like_order_status_request(text: str) -> bool:
+    normalized = normalize_text(text)
+
     phrases = [
         "where is my order",
         "where's my order",
@@ -214,12 +200,12 @@ def looks_like_order_status_request(text: str) -> bool:
         "order status",
     ]
 
-    normalized = normalize_text(text)
-
     return any(phrase in normalized for phrase in phrases)
 
 
 def looks_like_return_request(text: str) -> bool:
+    normalized = normalize_text(text)
+
     phrases = [
         "return",
         "send it back",
@@ -247,12 +233,12 @@ def looks_like_return_request(text: str) -> bool:
         "gift return",
     ]
 
-    normalized = normalize_text(text)
-
     return any(phrase in normalized for phrase in phrases)
 
 
 def looks_like_return_eligibility_request(text: str) -> bool:
+    normalized = normalize_text(text)
+
     phrases = [
         "can i return",
         "return eligible",
@@ -261,12 +247,12 @@ def looks_like_return_eligibility_request(text: str) -> bool:
         "am i able to return",
     ]
 
-    normalized = normalize_text(text)
-
     return any(phrase in normalized for phrase in phrases)
 
 
 def looks_like_refund_request(text: str) -> bool:
+    normalized = normalize_text(text)
+
     phrases = [
         "where is my refund",
         "refund status",
@@ -276,12 +262,12 @@ def looks_like_refund_request(text: str) -> bool:
         "refund completed",
     ]
 
-    normalized = normalize_text(text)
-
     return any(phrase in normalized for phrase in phrases)
 
 
 def looks_like_cancel_request(text: str) -> bool:
+    normalized = normalize_text(text)
+
     phrases = [
         "cancel my order",
         "cancel order",
@@ -291,12 +277,12 @@ def looks_like_cancel_request(text: str) -> bool:
         "cancel the book",
     ]
 
-    normalized = normalize_text(text)
-
     return any(phrase in normalized for phrase in phrases)
 
 
 def looks_like_address_change_request(text: str) -> bool:
+    normalized = normalize_text(text)
+
     phrases = [
         "change my address",
         "change shipping address",
@@ -306,12 +292,12 @@ def looks_like_address_change_request(text: str) -> bool:
         "change where it is delivered",
     ]
 
-    normalized = normalize_text(text)
-
     return any(phrase in normalized for phrase in phrases)
 
 
 def looks_like_missing_package_request(text: str) -> bool:
+    normalized = normalize_text(text)
+
     phrases = [
         "says delivered but",
         "marked delivered but",
@@ -324,12 +310,12 @@ def looks_like_missing_package_request(text: str) -> bool:
         "not at my door",
     ]
 
-    normalized = normalize_text(text)
-
     return any(phrase in normalized for phrase in phrases)
 
 
 def looks_like_shipping_policy_request(text: str) -> bool:
+    normalized = normalize_text(text)
+
     phrases = [
         "how long does delivery take",
         "how long does shipping take",
@@ -339,12 +325,12 @@ def looks_like_shipping_policy_request(text: str) -> bool:
         "standard shipping",
     ]
 
-    normalized = normalize_text(text)
-
     return any(phrase in normalized for phrase in phrases)
 
 
 def looks_like_return_policy_request(text: str) -> bool:
+    normalized = normalize_text(text)
+
     phrases = [
         "return policy",
         "how long do i have to return",
@@ -352,12 +338,12 @@ def looks_like_return_policy_request(text: str) -> bool:
         "returns policy",
     ]
 
-    normalized = normalize_text(text)
-
     return any(phrase in normalized for phrase in phrases)
 
 
 def looks_like_password_reset_request(text: str) -> bool:
+    normalized = normalize_text(text)
+
     phrases = [
         "forgot my password",
         "reset my password",
@@ -365,8 +351,6 @@ def looks_like_password_reset_request(text: str) -> bool:
         "cannot log in",
         "password reset",
     ]
-
-    normalized = normalize_text(text)
 
     return any(phrase in normalized for phrase in phrases)
 
@@ -430,19 +414,6 @@ def looks_like_address(text: str) -> bool:
     return has_number and has_street_word and len(normalized) >= 10
 
 
-def find_address_in_history(history: list[dict[str, str]]) -> str | None:
-    for message in reversed(history):
-        if message.get("role") != "user":
-            continue
-
-        content = message.get("content", "")
-
-        if looks_like_address(content):
-            return content.strip()
-
-    return None
-
-
 def classify_customer_message(
     user_message: str,
     history: list[dict[str, str]],
@@ -486,8 +457,7 @@ Rules:
 - Do not answer the customer.
 - Do not invent order details.
 - Do not choose an order ID.
-- Do not decide whether an action should be taken.
-- Use conversation context only to understand follow-up messages.
+- Do not decide whether a tool should be called.
 """
 
     conversation_context = "\n".join(
@@ -569,16 +539,27 @@ def deterministic_intent(text: str) -> str | None:
     return None
 
 
+def resolve_intent(
+    user_message: str,
+    history: list[dict[str, str]],
+) -> str:
+    local_intent = deterministic_intent(user_message)
+
+    if local_intent:
+        return local_intent
+
+    classification = classify_customer_message(user_message, history)
+    return classification.get("intent", "other")
+
+
 def ask_for_order_id(
     *,
     intent: str,
     state: dict[str, Any],
-    prefix: str | None = None,
+    prefix: str,
 ) -> dict[str, Any]:
-    message = prefix or "I can help with that."
-
     return response(
-        f"{message} What is your Bookly order ID? It should look like BK-1234.",
+        f"{prefix} What is your Bookly order ID? It should look like BK-1234.",
         intent=intent,
         action="clarifying_question",
         state={
@@ -595,32 +576,54 @@ def ask_to_choose_order(
     intent: str,
     state: dict[str, Any],
 ) -> dict[str, Any]:
-    readable_ids = " and ".join(order_ids)
+    readable_orders = " and ".join(order_ids)
 
     return response(
-        f"I found multiple Bookly orders in this conversation: {readable_ids}. Which order would you like help with?",
+        f"I found multiple Bookly orders in this conversation: {readable_orders}. Which order would you like help with?",
         intent=intent,
         action="disambiguate_order",
         state={
             **state,
+            "pending_intent": intent,
             "awaiting": "order_selection",
         },
     )
 
 
+def propose_action(
+    *,
+    text: str,
+    intent: str,
+    action_name: str,
+    tool_name: str,
+    state: dict[str, Any],
+) -> dict[str, Any]:
+    return response(
+        text,
+        intent=intent,
+        action="awaiting_confirmation",
+        tool_called=tool_name,
+        state={
+            **state,
+            "pending_action": action_name,
+            "pending_intent": intent,
+            "awaiting": "confirmation",
+        },
+    )
+
+
 def format_order_status(order: dict[str, Any]) -> str:
-    status = order["status"]
     book = f"{order['book_title']} ({order['format']})"
 
-    if status == "processing":
+    if order["status"] == "processing":
         return (
             f"Order {order['order_id']} for {book} is still processing. "
-            f"It is expected to ship soon, with an estimated arrival of {order['eta']}."
+            f"It is estimated to arrive around {order['eta']}."
         )
 
-    if status == "shipped":
+    if order["status"] == "shipped":
         delay_note = (
-            " It is currently delayed in transit."
+            " The shipment is currently delayed in transit."
             if order["shipment_status"] == "delayed"
             else ""
         )
@@ -631,7 +634,7 @@ def format_order_status(order: dict[str, Any]) -> str:
             f"Estimated arrival: {order['eta']}.{delay_note}"
         )
 
-    if status == "delivered":
+    if order["status"] == "delivered":
         return (
             f"Order {order['order_id']} for {book} was delivered on "
             f"{order['delivered_at']}."
@@ -643,35 +646,394 @@ def format_order_status(order: dict[str, Any]) -> str:
     )
 
 
-def execute_pending_action(
+def propose_for_intent(
+    *,
+    intent: str,
+    order_id: str,
+    state: dict[str, Any],
+) -> dict[str, Any]:
+    base_state = {
+        **state,
+        "active_order_id": order_id,
+        "pending_intent": intent,
+    }
+
+    if intent == "order_status":
+        return propose_action(
+            text=(
+                f"I can check the tracking status for order {order_id}. "
+                "Would you like me to look that up?"
+            ),
+            intent=intent,
+            action_name="get_order_details",
+            tool_name="get_order_details",
+            state=base_state,
+        )
+
+    if intent == "return_eligibility":
+        return propose_action(
+            text=(
+                f"I can check whether order {order_id} is eligible for a return. "
+                "Would you like me to check?"
+            ),
+            intent=intent,
+            action_name="check_return_eligibility",
+            tool_name="check_return_eligibility",
+            state=base_state,
+        )
+
+    if intent == "return_request":
+        return propose_action(
+            text=(
+                f"I can check whether order {order_id} is eligible for a return. "
+                "Would you like me to check before we create anything?"
+            ),
+            intent=intent,
+            action_name="check_return_eligibility",
+            tool_name="check_return_eligibility",
+            state=base_state,
+        )
+
+    if intent == "refund_status":
+        return propose_action(
+            text=(
+                f"I can look up the refund status for order {order_id}. "
+                "Would you like me to check?"
+            ),
+            intent=intent,
+            action_name="get_refund_status",
+            tool_name="get_refund_status",
+            state=base_state,
+        )
+
+    if intent == "cancel_order":
+        return propose_action(
+            text=(
+                f"I can check whether order {order_id} can still be canceled. "
+                "Would you like me to look into that?"
+            ),
+            intent=intent,
+            action_name="get_order_details",
+            tool_name="get_order_details",
+            state=base_state,
+        )
+
+    if intent == "change_address":
+        return propose_action(
+            text=(
+                f"I can check whether the shipping address for order {order_id} "
+                "can still be updated. Would you like me to check?"
+            ),
+            intent=intent,
+            action_name="get_order_details",
+            tool_name="get_order_details",
+            state=base_state,
+        )
+
+    if intent == "missing_package":
+        return propose_action(
+            text=(
+                f"I can check the delivery status for order {order_id} before "
+                "we start a missing-package claim. Would you like me to check?"
+            ),
+            intent=intent,
+            action_name="get_order_details",
+            tool_name="get_order_details",
+            state=base_state,
+        )
+
+    return response(
+        "I can help with that. What would you like to do?",
+        intent="other",
+        action="fallback",
+        state=make_state(active_order_id=order_id),
+    )
+
+
+def execute_confirmed_action(
     *,
     pending_action: str,
+    pending_intent: str,
     order_id: str,
     return_reason: str | None,
     new_address: str | None,
 ) -> dict[str, Any]:
+    if pending_action == "get_order_details":
+        result = get_order_details(order_id)
+
+        if not result["found"]:
+            return response(
+                result["message"],
+                intent=pending_intent,
+                action="invalid_order_id",
+                tool_called="get_order_details",
+                state=make_state(awaiting="order_id"),
+            )
+
+        order = result["order"]
+
+        if pending_intent == "order_status":
+            return response(
+                format_order_status(order),
+                intent="order_status",
+                action="order_status_response",
+                tool_called="get_order_details",
+                state=make_state(active_order_id=order_id),
+            )
+
+        if pending_intent == "missing_package":
+            if order["status"] != "delivered":
+                return response(
+                    (
+                        f"I checked order {order_id}. {format_order_status(order)} "
+                        "Because it is not marked as delivered, a missing-package "
+                        "claim is not available yet."
+                    ),
+                    intent="missing_package",
+                    action="missing_package_not_available",
+                    tool_called="get_order_details",
+                    state=make_state(active_order_id=order_id),
+                )
+
+            return propose_action(
+                text=(
+                    f"Order {order_id} is marked as delivered. I can now start "
+                    "a missing-package claim with Bookly support. Would you like "
+                    "me to proceed?"
+                ),
+                intent="missing_package",
+                action_name="create_missing_package_claim",
+                tool_name="create_missing_package_claim",
+                state=make_state(
+                    active_order_id=order_id,
+                    pending_intent="missing_package",
+                ),
+            )
+
+        if pending_intent == "cancel_order":
+            if not order["cancellation_eligible"]:
+                if order["status"] == "shipped":
+                    message = (
+                        f"Order {order_id} has already shipped, so it cannot be "
+                        "canceled. You can start a return after delivery."
+                    )
+                elif order["status"] == "delivered":
+                    message = (
+                        f"Order {order_id} was already delivered, so it cannot "
+                        "be canceled. I can help you start a return instead."
+                    )
+                elif order["status"] == "canceled":
+                    message = f"Order {order_id} was already canceled."
+                else:
+                    message = f"Order {order_id} cannot be canceled right now."
+
+                return response(
+                    message,
+                    intent="cancel_order",
+                    action="cancellation_not_available",
+                    tool_called="get_order_details",
+                    state=make_state(active_order_id=order_id),
+                )
+
+            return propose_action(
+                text=(
+                    f"Order {order_id} is still processing and can be canceled. "
+                    "Would you like me to cancel it?"
+                ),
+                intent="cancel_order",
+                action_name="cancel_order",
+                tool_name="cancel_order",
+                state=make_state(
+                    active_order_id=order_id,
+                    pending_intent="cancel_order",
+                ),
+            )
+
+        if pending_intent == "change_address":
+            if not order["address_change_eligible"]:
+                if order["status"] == "shipped":
+                    message = (
+                        f"Order {order_id} has already shipped, so Bookly can no "
+                        "longer update the delivery address. You may be able to "
+                        "request a delivery hold directly with the carrier."
+                    )
+                else:
+                    message = (
+                        f"Order {order_id} is no longer eligible for an address change."
+                    )
+
+                return response(
+                    message,
+                    intent="change_address",
+                    action="address_change_not_available",
+                    tool_called="get_order_details",
+                    state=make_state(active_order_id=order_id),
+                )
+
+            if not new_address:
+                return response(
+                    (
+                        "The order is still eligible for an address update. "
+                        "Please send the full new shipping address, including "
+                        "street address, city, state, and ZIP code."
+                    ),
+                    intent="change_address",
+                    action="clarifying_question",
+                    tool_called="get_order_details",
+                    state=make_state(
+                        active_order_id=order_id,
+                        pending_intent="change_address",
+                        awaiting="new_address",
+                    ),
+                )
+
+            return propose_action(
+                text=(
+                    f"I can update the shipping address for order {order_id} to: "
+                    f"{new_address}. Would you like me to make that change?"
+                ),
+                intent="change_address",
+                action_name="update_shipping_address",
+                tool_name="update_shipping_address",
+                state=make_state(
+                    active_order_id=order_id,
+                    pending_intent="change_address",
+                    new_address=new_address,
+                ),
+            )
+
+    if pending_action == "check_return_eligibility":
+        result = check_return_eligibility(order_id)
+
+        if not result.get("found"):
+            return response(
+                result["message"],
+                intent=pending_intent,
+                action="invalid_order_id",
+                tool_called="check_return_eligibility",
+                state=make_state(awaiting="order_id"),
+            )
+
+        if pending_intent == "return_eligibility":
+            return response(
+                result["message"],
+                intent="return_eligibility",
+                action="return_eligibility_response",
+                tool_called="check_return_eligibility",
+                state=make_state(active_order_id=order_id),
+            )
+
+        if not result["eligible"]:
+            return response(
+                result["message"],
+                intent="return_request",
+                action="return_not_eligible",
+                tool_called="check_return_eligibility",
+                state=make_state(active_order_id=order_id),
+            )
+
+        if not return_reason:
+            return response(
+                "Order is eligible for a return. What is the reason for the return?",
+                intent="return_request",
+                action="clarifying_question",
+                tool_called="check_return_eligibility",
+                state=make_state(
+                    active_order_id=order_id,
+                    pending_intent="return_request",
+                    awaiting="return_reason",
+                ),
+            )
+
+        order = result["order"]
+
+        return propose_action(
+            text=(
+                f"Order {order_id} is eligible for a return. I can create a "
+                f"prepaid return request for {order['book_title']} "
+                f"({order['format']}) with the reason: {return_reason}. "
+                "Would you like me to proceed?"
+            ),
+            intent="return_request",
+            action_name="create_return_request",
+            tool_name="create_return_request",
+            state=make_state(
+                active_order_id=order_id,
+                pending_intent="return_request",
+                return_reason=return_reason,
+            ),
+        )
+
+    if pending_action == "get_refund_status":
+        result = get_refund_status(order_id)
+
+        if not result.get("found"):
+            return response(
+                result["message"],
+                intent="refund_status",
+                action="invalid_order_id",
+                tool_called="get_refund_status",
+                state=make_state(awaiting="order_id"),
+            )
+
+        return response(
+            result["message"],
+            intent="refund_status",
+            action="refund_status_response",
+            tool_called="get_refund_status",
+            state=make_state(active_order_id=order_id),
+        )
+
     if pending_action == "create_return_request":
-        return create_return_request(
-            order_id,
-            return_reason or "Other",
+        result = create_return_request(order_id, return_reason or "Other")
+
+        return response(
+            result["message"],
+            intent="return_request",
+            action="create_return_request",
+            tool_called="create_return_request",
+            state=make_state(active_order_id=order_id),
         )
 
     if pending_action == "cancel_order":
-        return cancel_order(order_id)
+        result = cancel_order(order_id)
+
+        return response(
+            result["message"],
+            intent="cancel_order",
+            action="cancel_order",
+            tool_called="cancel_order",
+            state=make_state(active_order_id=order_id),
+        )
 
     if pending_action == "update_shipping_address":
-        return update_shipping_address(
-            order_id,
-            new_address or "",
+        result = update_shipping_address(order_id, new_address or "")
+
+        return response(
+            result["message"],
+            intent="change_address",
+            action="update_shipping_address",
+            tool_called="update_shipping_address",
+            state=make_state(active_order_id=order_id),
         )
 
     if pending_action == "create_missing_package_claim":
-        return create_missing_package_claim(order_id)
+        result = create_missing_package_claim(order_id)
 
-    return {
-        "success": False,
-        "message": "I was unable to complete that request. Please try again.",
-    }
+        return response(
+            result["message"],
+            intent="missing_package",
+            action="create_missing_package_claim",
+            tool_called="create_missing_package_claim",
+            state=make_state(active_order_id=order_id),
+        )
+
+    return response(
+        "I could not complete that request. Please try again.",
+        intent=pending_intent,
+        action="action_failed",
+        state=make_state(active_order_id=order_id),
+    )
 
 
 def handle_confirmation(
@@ -679,338 +1041,48 @@ def handle_confirmation(
     user_message: str,
     state: dict[str, Any],
 ) -> dict[str, Any] | None:
-    pending_action = state.get("pending_action")
-
-    if pending_action not in ACTION_CONFIRMATIONS:
+    if state.get("awaiting") != "confirmation":
         return None
 
+    pending_action = state.get("pending_action")
+    pending_intent = state.get("pending_intent") or "other"
     order_id = state.get("active_order_id")
 
-    if not order_id:
+    if not pending_action or not order_id:
         return response(
-            "I lost the order reference for that request. What is your Bookly order ID?",
-            intent=state.get("pending_intent") or "other",
+            "I lost the details for that request. What is your Bookly order ID?",
+            intent=pending_intent,
             action="clarifying_question",
             state=make_state(
-                pending_intent=state.get("pending_intent"),
+                pending_intent=pending_intent,
                 awaiting="order_id",
             ),
         )
 
     if is_no(user_message):
         return response(
-            "No problem — I have not made any changes to your order.",
-            intent=state.get("pending_intent") or "other",
+            "No problem — I have not made any changes or run any actions for that order.",
+            intent=pending_intent,
             action="action_cancelled_by_customer",
             state=make_state(active_order_id=order_id),
         )
 
     if not is_yes(user_message):
         return response(
-            "Please reply yes to confirm, or no to cancel this request.",
-            intent=state.get("pending_intent") or "other",
+            "Please reply yes to continue, or no to cancel this request.",
+            intent=pending_intent,
             action="awaiting_confirmation",
+            tool_called=pending_action,
             state=state,
         )
 
-    result = execute_pending_action(
+    return execute_confirmed_action(
         pending_action=pending_action,
+        pending_intent=pending_intent,
         order_id=order_id,
         return_reason=state.get("return_reason"),
         new_address=state.get("new_address"),
     )
-
-    return response(
-        result["message"],
-        intent=state.get("pending_intent") or "other",
-        action=pending_action,
-        tool_called=pending_action,
-        state=make_state(active_order_id=order_id),
-    )
-
-
-def handle_order_status(order_id: str) -> dict[str, Any]:
-    result = get_order_details(order_id)
-
-    if not result["found"]:
-        return response(
-            result["message"],
-            intent="order_status",
-            action="invalid_order_id",
-            tool_called="get_order_details",
-            state=make_state(awaiting="order_id"),
-        )
-
-    order = result["order"]
-
-    return response(
-        format_order_status(order),
-        intent="order_status",
-        action="order_status_response",
-        tool_called="get_order_details",
-        state=make_state(active_order_id=order["order_id"]),
-    )
-
-
-def handle_return_eligibility(order_id: str) -> dict[str, Any]:
-    result = check_return_eligibility(order_id)
-
-    if not result.get("found"):
-        return response(
-            result["message"],
-            intent="return_eligibility",
-            action="invalid_order_id",
-            tool_called="check_return_eligibility",
-            state=make_state(awaiting="order_id"),
-        )
-
-    return response(
-        result["message"],
-        intent="return_eligibility",
-        action="return_eligibility_response",
-        tool_called="check_return_eligibility",
-        state=make_state(active_order_id=result["order"]["order_id"]),
-    )
-
-
-def handle_return_request(
-    *,
-    order_id: str,
-    return_reason: str | None,
-) -> dict[str, Any]:
-    eligibility = check_return_eligibility(order_id)
-
-    if not eligibility.get("found"):
-        return response(
-            eligibility["message"],
-            intent="return_request",
-            action="invalid_order_id",
-            tool_called="check_return_eligibility",
-            state=make_state(awaiting="order_id"),
-        )
-
-    if not eligibility.get("eligible"):
-        return response(
-            eligibility["message"],
-            intent="return_request",
-            action="return_not_eligible",
-            tool_called="check_return_eligibility",
-            state=make_state(active_order_id=order_id),
-        )
-
-    if not return_reason:
-        return response(
-            "I found the order and it is eligible for a return. What is the reason for the return?",
-            intent="return_request",
-            action="clarifying_question",
-            tool_called="check_return_eligibility",
-            state=make_state(
-                active_order_id=order_id,
-                pending_intent="return_request",
-                awaiting="return_reason",
-            ),
-        )
-
-    order = eligibility["order"]
-
-    return response(
-        (
-            f"I can create a return for {order['book_title']} "
-            f"({order['format']}) from order {order_id}. "
-            f"Reason: {return_reason}. Would you like me to go ahead?"
-        ),
-        intent="return_request",
-        action="awaiting_confirmation",
-        tool_called="check_return_eligibility",
-        state=make_state(
-            active_order_id=order_id,
-            pending_action="create_return_request",
-            pending_intent="return_request",
-            return_reason=return_reason,
-            awaiting="confirmation",
-        ),
-    )
-
-
-def handle_cancel_order(order_id: str) -> dict[str, Any]:
-    result = get_order_details(order_id)
-
-    if not result["found"]:
-        return response(
-            result["message"],
-            intent="cancel_order",
-            action="invalid_order_id",
-            tool_called="get_order_details",
-            state=make_state(awaiting="order_id"),
-        )
-
-    order = result["order"]
-
-    if not order["cancellation_eligible"]:
-        failed_result = cancel_order(order_id)
-
-        return response(
-            failed_result["message"],
-            intent="cancel_order",
-            action="cancellation_not_available",
-            tool_called="cancel_order",
-            state=make_state(active_order_id=order_id),
-        )
-
-    return response(
-        (
-            f"Order {order_id} is still processing and can be canceled. "
-            "Would you like me to cancel it?"
-        ),
-        intent="cancel_order",
-        action="awaiting_confirmation",
-        tool_called="get_order_details",
-        state=make_state(
-            active_order_id=order_id,
-            pending_action="cancel_order",
-            pending_intent="cancel_order",
-            awaiting="confirmation",
-        ),
-    )
-
-
-def handle_address_change(
-    *,
-    order_id: str,
-    new_address: str | None,
-) -> dict[str, Any]:
-    result = get_order_details(order_id)
-
-    if not result["found"]:
-        return response(
-            result["message"],
-            intent="change_address",
-            action="invalid_order_id",
-            tool_called="get_order_details",
-            state=make_state(awaiting="order_id"),
-        )
-
-    order = result["order"]
-
-    if not order["address_change_eligible"]:
-        failed_result = update_shipping_address(order_id, new_address or "")
-
-        return response(
-            failed_result["message"],
-            intent="change_address",
-            action="address_change_not_available",
-            tool_called="update_shipping_address",
-            state=make_state(active_order_id=order_id),
-        )
-
-    if not new_address:
-        return response(
-            "I can update the address for that order. Please send the full new shipping address, including city, state, and ZIP code.",
-            intent="change_address",
-            action="clarifying_question",
-            tool_called="get_order_details",
-            state=make_state(
-                active_order_id=order_id,
-                pending_intent="change_address",
-                awaiting="new_address",
-            ),
-        )
-
-    return response(
-        (
-            f"I can update the shipping address for order {order_id} to: "
-            f"{new_address}. Would you like me to make that change?"
-        ),
-        intent="change_address",
-        action="awaiting_confirmation",
-        tool_called="get_order_details",
-        state=make_state(
-            active_order_id=order_id,
-            pending_action="update_shipping_address",
-            pending_intent="change_address",
-            new_address=new_address,
-            awaiting="confirmation",
-        ),
-    )
-
-
-def handle_missing_package(order_id: str) -> dict[str, Any]:
-    result = get_order_details(order_id)
-
-    if not result["found"]:
-        return response(
-            result["message"],
-            intent="missing_package",
-            action="invalid_order_id",
-            tool_called="get_order_details",
-            state=make_state(awaiting="order_id"),
-        )
-
-    order = result["order"]
-
-    if order["status"] != "delivered":
-        return response(
-            (
-                f"Order {order_id} is not marked as delivered yet. "
-                "I can check the tracking status instead."
-            ),
-            intent="missing_package",
-            action="missing_package_not_applicable",
-            tool_called="get_order_details",
-            state=make_state(active_order_id=order_id),
-        )
-
-    return response(
-        (
-            f"Order {order_id} is marked as delivered. I can start a "
-            "missing-package claim with Bookly support. Would you like me to proceed?"
-        ),
-        intent="missing_package",
-        action="awaiting_confirmation",
-        tool_called="get_order_details",
-        state=make_state(
-            active_order_id=order_id,
-            pending_action="create_missing_package_claim",
-            pending_intent="missing_package",
-            awaiting="confirmation",
-        ),
-    )
-
-
-def handle_refund_status(order_id: str) -> dict[str, Any]:
-    result = get_refund_status(order_id)
-
-    if not result.get("found"):
-        return response(
-            result["message"],
-            intent="refund_status",
-            action="invalid_order_id",
-            tool_called="get_refund_status",
-            state=make_state(awaiting="order_id"),
-        )
-
-    return response(
-        result["message"],
-        intent="refund_status",
-        action="refund_status_response",
-        tool_called="get_refund_status",
-        state=make_state(active_order_id=order_id),
-    )
-
-
-def resolve_intent(
-    *,
-    user_message: str,
-    history: list[dict[str, str]],
-) -> str:
-    local_intent = deterministic_intent(user_message)
-
-    if local_intent:
-        return local_intent
-
-    classification = classify_customer_message(user_message, history)
-
-    return classification.get("intent", "other")
 
 
 def run_bookly_agent(
@@ -1020,7 +1092,6 @@ def run_bookly_agent(
 ) -> dict[str, Any]:
     history = history or []
     state = state or make_state()
-
     user_message = user_message.strip()
 
     if not user_message:
@@ -1051,7 +1122,10 @@ def run_bookly_agent(
 
     if looks_like_incomplete_order_id(user_message) and not current_order_ids:
         return response(
-            "That looks like an incomplete Bookly order ID. Please send the full ID in the format BK-1234.",
+            (
+                "That looks like an incomplete Bookly order ID. Please send the "
+                "full ID in the format BK-1234."
+            ),
             intent=state.get("pending_intent") or "other",
             action="invalid_order_id",
             state={
@@ -1070,43 +1144,45 @@ def run_bookly_agent(
     pending_intent = state.get("pending_intent")
     awaiting = state.get("awaiting")
 
-    if awaiting == "order_selection" and current_order_ids:
-        order_id = current_order_ids[0]
-
-    if awaiting == "order_id":
-        if not order_id:
-            return ask_for_order_id(
+    if awaiting == "order_selection":
+        if not current_order_ids:
+            return response(
+                "Please send the Bookly order ID you want to use, in the format BK-1234.",
                 intent=pending_intent or "other",
+                action="clarifying_question",
                 state=state,
             )
 
-        if pending_intent == "order_status":
-            return handle_order_status(order_id)
-
-        if pending_intent == "return_request":
-            return handle_return_request(
-                order_id=order_id,
-                return_reason=state.get("return_reason")
-                or find_return_reason_in_history(history),
-            )
-
-        if pending_intent == "return_eligibility":
-            return handle_return_eligibility(order_id)
-
-        if pending_intent == "refund_status":
-            return handle_refund_status(order_id)
-
-        if pending_intent == "cancel_order":
-            return handle_cancel_order(order_id)
-
-        if pending_intent == "change_address":
-            return handle_address_change(
-                order_id=order_id,
+        return propose_for_intent(
+            intent=pending_intent or "order_status",
+            order_id=current_order_ids[0],
+            state=make_state(
+                active_order_id=current_order_ids[0],
+                pending_intent=pending_intent,
+                return_reason=state.get("return_reason"),
                 new_address=state.get("new_address"),
+            ),
+        )
+
+    if awaiting == "order_id":
+        if not order_id:
+            return response(
+                "Please send your Bookly order ID in the format BK-1234.",
+                intent=pending_intent or "other",
+                action="clarifying_question",
+                state=state,
             )
 
-        if pending_intent == "missing_package":
-            return handle_missing_package(order_id)
+        return propose_for_intent(
+            intent=pending_intent or "order_status",
+            order_id=order_id,
+            state=make_state(
+                active_order_id=order_id,
+                pending_intent=pending_intent,
+                return_reason=state.get("return_reason"),
+                new_address=state.get("new_address"),
+            ),
+        )
 
     if awaiting == "return_reason":
         reason = infer_return_reason(user_message) or user_message
@@ -1114,21 +1190,30 @@ def run_bookly_agent(
         if not order_id:
             return ask_for_order_id(
                 intent="return_request",
+                prefix="I can help with that.",
                 state=make_state(
                     pending_intent="return_request",
                     return_reason=reason,
                 ),
             )
 
-        return handle_return_request(
+        return propose_for_intent(
+            intent="return_request",
             order_id=order_id,
-            return_reason=reason,
+            state=make_state(
+                active_order_id=order_id,
+                pending_intent="return_request",
+                return_reason=reason,
+            ),
         )
 
     if awaiting == "new_address":
         if not looks_like_address(user_message):
             return response(
-                "Please send the full new shipping address, including street address, city, state, and ZIP code.",
+                (
+                    "Please send the full new shipping address, including street "
+                    "address, city, state, and ZIP code."
+                ),
                 intent="change_address",
                 action="clarifying_question",
                 state=state,
@@ -1137,84 +1222,73 @@ def run_bookly_agent(
         if not order_id:
             return ask_for_order_id(
                 intent="change_address",
+                prefix="I can help update that address.",
                 state=make_state(
                     pending_intent="change_address",
                     new_address=user_message,
                 ),
             )
 
-        return handle_address_change(
-            order_id=order_id,
-            new_address=user_message,
+        return propose_action(
+            text=(
+                f"I can check whether order {order_id} is still eligible for an "
+                "address update. Would you like me to check?"
+            ),
+            intent="change_address",
+            action_name="get_order_details",
+            tool_name="get_order_details",
+            state=make_state(
+                active_order_id=order_id,
+                pending_intent="change_address",
+                new_address=user_message,
+            ),
         )
 
-    intent = resolve_intent(
-        user_message=user_message,
-        history=history,
-    )
+    intent = resolve_intent(user_message, history)
 
-    if intent in {
-        "order_status",
-        "return_request",
-        "return_eligibility",
-        "refund_status",
-        "cancel_order",
-        "change_address",
-        "missing_package",
-    }:
+    if intent in ORDER_REQUIRED_INTENTS:
         if not order_id and len(historical_order_ids) > 1:
             return ask_to_choose_order(
                 order_ids=historical_order_ids[-2:],
                 intent=intent,
-                state=make_state(pending_intent=intent),
+                state=make_state(
+                    pending_intent=intent,
+                    return_reason=infer_return_reason(user_message),
+                ),
             )
 
         if not order_id:
             prefix_map = {
                 "order_status": "I can check that for you.",
                 "return_request": "I can help start a return.",
-                "return_eligibility": "I can check whether your order is eligible for a return.",
+                "return_eligibility": "I can check return eligibility.",
                 "refund_status": "I can check the refund status.",
-                "cancel_order": "I can check whether that order can still be canceled.",
-                "change_address": "I can check whether the shipping address can still be updated.",
-                "missing_package": "I’m sorry that happened. I can help with a missing-package claim.",
+                "cancel_order": "I can check whether the order can still be canceled.",
+                "change_address": "I can help update your shipping address.",
+                "missing_package": (
+                    "I’m sorry that happened. I can help with a missing-package claim."
+                ),
             }
 
             return ask_for_order_id(
                 intent=intent,
-                state=make_state(pending_intent=intent),
                 prefix=prefix_map[intent],
+                state=make_state(
+                    pending_intent=intent,
+                    return_reason=infer_return_reason(user_message),
+                ),
             )
 
-    if intent == "order_status":
-        return handle_order_status(order_id)
-
-    if intent == "return_eligibility":
-        return handle_return_eligibility(order_id)
-
-    if intent == "return_request":
-        return handle_return_request(
+        return propose_for_intent(
+            intent=intent,
             order_id=order_id,
-            return_reason=infer_return_reason(user_message)
-            or find_return_reason_in_history(history),
+            state=make_state(
+                active_order_id=order_id,
+                pending_intent=intent,
+                return_reason=infer_return_reason(user_message)
+                or find_return_reason_in_history(history),
+            ),
         )
-
-    if intent == "refund_status":
-        return handle_refund_status(order_id)
-
-    if intent == "cancel_order":
-        return handle_cancel_order(order_id)
-
-    if intent == "change_address":
-        return handle_address_change(
-            order_id=order_id,
-            new_address=find_address_in_history(history)
-            if looks_like_address(user_message)
-            else None,
-        )
-
-    if intent == "missing_package":
-        return handle_missing_package(order_id)
 
     policy_map = {
         "shipping_policy": "shipping",
