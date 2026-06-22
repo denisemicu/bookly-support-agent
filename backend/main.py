@@ -6,16 +6,13 @@ from agent import run_bookly_agent
 
 app = FastAPI(title="Bookly Support Agent API")
 
-# Frontends allowed to call this API.
-# Add your real Vercel URL here later, once we deploy the backend.
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
